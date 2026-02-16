@@ -1,0 +1,30 @@
+{
+  "category_to_idx": {
+    "Drainage Issue": 0,
+    "Electricity Issue": 1,
+    "Encroachment": 2,
+    "Garbage Collection": 3,
+    "Illegal Construction": 4,
+    "Noise Pollution": 5,
+    "Public Property Damage": 6,
+    "Road Damage": 7,
+    "Stray Animals": 8,
+    "Street Lights": 9,
+    "Tree Related": 10,
+    "Water Supply": 11
+  },
+  "idx_to_category": {
+    "0": "Drainage Issue",
+    "1": "Electricity Issue",
+    "2": "Encroachment",
+    "3": "Garbage Collection",
+    "4": "Illegal Construction",
+    "5": "Noise Pollution",
+    "6": "Public Property Damage",
+    "7": "Road Damage",
+    "8": "Stray Animals",
+    "9": "Street Lights",
+    "10": "Tree Related",
+    "11": "Water Supply"
+  }
+}
