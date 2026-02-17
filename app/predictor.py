@@ -52,7 +52,7 @@ class ComplaintPredictor:
 
     def __init__(self, model_path, mappings_path, config_path="app/config.yaml"):
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
 
         # Load config
         with open(config_path, "r") as f:
@@ -81,8 +81,14 @@ class ComplaintPredictor:
         checkpoint = torch.load(model_path, map_location=self.device)
         self.model.load_state_dict(checkpoint)
 
-        self.model.to(self.device)
+        self.model = torch.quantization.quantize_dynamic(
+            self.model,
+            {torch.nn.Linear},
+            dtype=torch.qint8
+)
+
         self.model.eval()
+
 
     def _calculate_priority(self, category, confidence):
 
@@ -107,8 +113,9 @@ class ComplaintPredictor:
             return_tensors="pt"
         )
 
-        input_ids = encoding["input_ids"].to(self.device)
-        attention_mask = encoding["attention_mask"].to(self.device)
+        input_ids = encoding["input_ids"]
+        attention_mask = encoding["attention_mask"]
+
 
         with torch.no_grad():
             logits = self.model(input_ids, attention_mask)
