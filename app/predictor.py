@@ -2,9 +2,7 @@ import torch
 import yaml
 import json
 from transformers import AutoTokenizer
-# from model import ComplaintClassifier
 from app.model import ComplaintClassifier
-
 
 
 class ComplaintPredictor:
@@ -23,35 +21,10 @@ class ComplaintPredictor:
         "Stray Animals": 4,
         "Tree Related": 3
     }
-    def _keyword_override(self, text):
-        text = text.lower()
-
-        # Water Supply
-        if any(word in text for word in [
-            "paani nahi", "water not coming", "no water",
-            "pipeline phat", "pipeline burst", "jal nahi"
-        ]):
-            return "Water Supply"
-
-        # Road Damage
-        if any(word in text for word in [
-            "gadda", "khadda", "pothole", "road broken",
-            "road crack", "bada hole"
-        ]):
-            return "Road Damage"
-
-        # Electricity Issue
-        if any(word in text for word in [
-            "bijli nahi", "power cut", "light nahi",
-            "electric pole", "sparking", "wire hanging"
-        ]):
-            return "Electricity Issue"
-
-        return None
-
 
     def __init__(self, model_path, mappings_path, config_path="app/config.yaml"):
 
+        # Force CPU
         self.device = torch.device("cpu")
 
         # Load config
@@ -63,35 +36,59 @@ class ComplaintPredictor:
             mappings = json.load(f)
 
         self.category_to_idx = mappings["category_to_idx"]
-        self.idx_to_category = {int(k): v for k, v in mappings["idx_to_category"].items()}
+        self.idx_to_category = {
+            int(k): v for k, v in mappings["idx_to_category"].items()
+        }
         self.num_categories = len(self.category_to_idx)
 
-        # Tokenizer (internet based)
-        self.tokenizer = AutoTokenizer.from_pretrained(self.config["model"]["name"])
+        # Load LOCAL tokenizer (no internet dependency)
+        self.tokenizer = AutoTokenizer.from_pretrained("models/tokenizer")
 
-        # Model
+        # Build model
         self.model = ComplaintClassifier(
             model_name=self.config["model"]["name"],
             num_categories=self.num_categories,
             classifier_hidden_size=self.config["model"]["classifier_hidden_size"],
             dropout=self.config["model"]["hidden_dropout_prob"]
-)
+        )
 
-
+        # Load weights
         checkpoint = torch.load(model_path, map_location=self.device)
         self.model.load_state_dict(checkpoint)
 
+        # Quantize for lower memory usage
         self.model = torch.quantization.quantize_dynamic(
             self.model,
             {torch.nn.Linear},
             dtype=torch.qint8
-)
+        )
 
         self.model.eval()
 
+    def _keyword_override(self, text):
+        text = text.lower()
+
+        if any(word in text for word in [
+            "paani nahi", "water not coming", "no water",
+            "pipeline phat", "pipeline burst", "jal nahi"
+        ]):
+            return "Water Supply"
+
+        if any(word in text for word in [
+            "gadda", "khadda", "pothole", "road broken",
+            "road crack", "bada hole"
+        ]):
+            return "Road Damage"
+
+        if any(word in text for word in [
+            "bijli nahi", "power cut", "light nahi",
+            "electric pole", "sparking", "wire hanging"
+        ]):
+            return "Electricity Issue"
+
+        return None
 
     def _calculate_priority(self, category, confidence):
-
         base = self.BASE_PRIORITY.get(category, 5)
 
         boost = 0
@@ -100,8 +97,7 @@ class ComplaintPredictor:
         elif confidence >= 0.75:
             boost = 1
 
-        final_priority = min(10, base + boost)
-        return final_priority
+        return min(10, base + boost)
 
     def predict(self, text):
 
@@ -116,7 +112,6 @@ class ComplaintPredictor:
         input_ids = encoding["input_ids"]
         attention_mask = encoding["attention_mask"]
 
-
         with torch.no_grad():
             logits = self.model(input_ids, attention_mask)
             probs = torch.softmax(logits, dim=-1)
@@ -124,10 +119,10 @@ class ComplaintPredictor:
 
         category = self.idx_to_category[pred.item()]
         confidence = confidence.item()
-        override_category = self._keyword_override(text)
-        if override_category:
-            category = override_category
 
+        override = self._keyword_override(text)
+        if override:
+            category = override
 
         priority = self._calculate_priority(category, confidence)
 
